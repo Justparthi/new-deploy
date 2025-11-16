@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shortmeet - Professional Video Conferencing</title>
+    <meta name="description" content="Secure, high-quality video conferencing platform for teams and individuals.">
+    <meta name="keywords" content="video conferencing, online meetings, team collaboration, video calls">
+    <meta name="author" content="Shortmeet">
+    
+    <!-- Open Graph Meta Tags for better sharing -->
+    <meta property="og:title" content="Shortmeet - Professional Video Conferencing">
+    <meta property="og:description" content="Join secure, high-quality video meetings instantly. No downloads required.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://shortmeet.app">
+    
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    
+    <!-- Prevent glyphicons 404 errors -->
+    <link rel="stylesheet" href="/fonts/glyphicons-fallback.css">
+    
+    <!-- Preload critical resources -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <!-- Security headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' ws: wss:;">
+    <script>
+      // Early bootstrap for environments that destructure from globalThis
+      (function() {
+        if (typeof window !== 'undefined') {
+          if (typeof window.globalThis === 'undefined') window.globalThis = window;
+          var keys = ['fetch','Request','Response','Headers'];
+          for (var i=0;i<keys.length;i++) {
+            var k = keys[i];
+            if (typeof window.globalThis[k] === 'undefined' && typeof window[k] !== 'undefined') {
+              window.globalThis[k] = window[k];
+            }
+          }
+          if (typeof window.self === 'undefined') window.self = window;
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    
+    <!-- Loading indicator -->
+    <div id="loading" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; align-items: center; justify-content: center; z-index: 9999;">
+      <div style="text-align: center;">
+        <div style="width: 50px; height: 50px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+        <p style="color: #666; font-family: Arial, sans-serif;">Loading Shortmeet...</p>
+      </div>
+    </div>
+    
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+    
+    <script>
+      // Hide loading indicator when React app loads
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          const loading = document.getElementById('loading');
+          if (loading) {
+            loading.style.display = 'none';
+          }
+        }, 1000);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,126 @@
+.RoomBackDrop{
+    background: rgba(0, 0, 0, 0.40);
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    /* width: 100%;
+    height: 100%;
+    z-index: 1; */
+}
+
+.imgs{
+    margin-right: 20px;
+}
+
+.RoomContainer{
+    display: flex;
+    position: absolute;
+    background: #ffffff;
+    z-index: 2;
+    top: 12%;
+    bottom: 5%;
+    left: 14%;
+    right: 10%;
+    width: 75%;
+    height: 60%;
+    color: #ffffff;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+
+.leftRoom{
+    display: flex;
+    flex: 2;
+    z-index: 4;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+
+}
+
+.inputFields{
+    display: flex;
+    flex-direction: column;
+    align-items:center;
+    gap: 20px;
+}
+
+.inputRoomId{
+    display: flex;
+    width: 300px;
+    height: 50px;
+    border: 1px solid #000;
+    border-radius: 10px;
+    justify-content: center;
+    align-items: center;
+    margin-right: 20px;
+}
+
+.random{
+    width: 100%;
+    margin-left: 0;
+}
+
+.startMeet{
+    display: flex;
+    background: #0076FF;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    border: none;
+    width: 300px;
+    height: 54px;
+    border-radius: 10px;
+    font-size: 15px;
+    margin-right: 20px;
+}
+
+.rightRoom{
+    width: 50%;
+    background: #000;
+}
+
+.webcamera{
+    object-fit: contain;
+    margin-left:0;
+    width: 100%;
+    height: 100%;
+}
+
+.meetControls{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: absolute;
+    width: 300px;
+    z-index: 3;
+    top: 85%;
+    bottom: 0%;
+    left: 62%;
+    right: 20%;
+    margin-bottom: 15px;
+}
+
+.closebtn{
+    width: 82px;
+    height: 33px;
+    color: #888888;
+    border: none;
+    border-radius: 5px;
+    position: absolute;
+    right: 15px;
+    margin-top: 30px;
+    background: rgba(136, 136, 136, 0.30)
+}
+
+@media screen and (max-width: 680px) {
+    .RoomContainer{
+        flex-direction: column;
+        /* height: fit-content; */
+        /* width: 100%; */
+        /* height: 100%; */
+    }
+}

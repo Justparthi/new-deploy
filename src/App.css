@@ -1,0 +1,26 @@
+/* App-specific styles */
+.btn-outline-primary:hover {
+    color: #fff;
+}
+
+/* Smooth transitions for all interactive elements */
+button, a, input, textarea {
+    transition: all 0.3s ease;
+}
+
+/* Focus states */
+input:focus, textarea:focus, button:focus {
+    outline: none;
+}
+
+/* Mirror effect for local video */
+.mirror-video {
+    transform: scaleX(-1);
+}
+
+/* Glass effect for video containers */
+.glass-effect {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}

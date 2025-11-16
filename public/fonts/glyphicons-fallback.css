@@ -1,0 +1,31 @@
+/* Prevent glyphicons font 404 errors */
+/* This handles requests for Bootstrap glyphicons fonts that may be cached or injected by browser extensions */
+
+/* Override any existing glyphicons font definitions */
+@font-face {
+  font-family: 'Glyphicons Halflings';
+  src: local('Arial'), local('Helvetica'), local('sans-serif');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Prevent browser from loading glyphicons fonts */
+[class^="glyphicon-"],
+[class*=" glyphicon-"] {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  font-variant: normal !important;
+  text-transform: none !important;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Block any attempts to load glyphicons fonts - using CSS to prevent font loading */
+/* Additional fallback for any icon fonts */
+.icon,
+[class*="icon-"] {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+}
