@@ -1,4 +1,5 @@
-// client/src/Components/NewRoom/NewRoom.jsx
+// Fixed NewRoom.jsx - Better error handling and participant management
+
 import { useContext, useEffect, useRef, useState, useCallback } from 'react'
 import PropTypes from 'prop-types'
 import './NewRoom.css'
@@ -20,7 +21,6 @@ export default function NewRoom({ status, onModalClose }) {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
 
-    // Pre-fill username from authenticated user
     const [formData, setFormData] = useState({
         roomName: "",
         roomCode: "",
@@ -40,13 +40,8 @@ export default function NewRoom({ status, onModalClose }) {
         ModalCloseDataToParent(false);
     }, [ModalCloseDataToParent]);
 
-    const cameraToggle = () => {
-        setIsCameraOn(!isCameraOn);
-    }
-
-    const micToggle = () => {
-        setIsMicOn(!isMicOn);
-    }
+    const cameraToggle = () => setIsCameraOn(!isCameraOn);
+    const micToggle = () => setIsMicOn(!isMicOn);
 
     useEffect(() => {
         function handleKeyPress(event) {
@@ -55,26 +50,18 @@ export default function NewRoom({ status, onModalClose }) {
                 closeModal();
             }
         }
-
         window.addEventListener('keydown', handleKeyPress);
-        return () => {
-            window.removeEventListener('keydown', handleKeyPress);
-        };
+        return () => window.removeEventListener('keydown', handleKeyPress);
     }, [setNewMeeting, closeModal]);
 
-    const webcamStyle = {
-        width: '100%',
-        height: '100%',
-    };
+    const webcamStyle = { width: '100%', height: '100%' };
 
     const handleChange = (event) => {
         const { name, value } = event.target;
-        setFormData(prevNote => {
-            return {
-                ...prevNote,
-                [name]: value
-            };
-        });
+        setFormData(prevNote => ({
+            ...prevNote,
+            [name]: value
+        }));
     }
 
     const [errorMsg, setErrorMsg] = useState("");
@@ -86,7 +73,7 @@ export default function NewRoom({ status, onModalClose }) {
         try {
             const fd = formData;
             
-            // Validate input
+            // ✅ Validate input
             if (!fd.username || !fd.password) {
                 setErrorMsg("Username and password are required!");
                 return;
@@ -97,118 +84,154 @@ export default function NewRoom({ status, onModalClose }) {
                 return;
             }
             
+            if (status === 'join' && !fd.roomCode) {
+                setErrorMsg("Room code is required!");
+                return;
+            }
+            
             setIsLoading(true);
             setErrorMsg("");
             
-            // Prepare request body with authenticated user info
             const requestBody = status === 'new' 
                 ? {
                     roomName: fd.roomName || `${fd.username}'s Meeting`,
                     username: fd.username,
                     password: fd.password,
                     isInstant: false,
-                    userEmail: currentUser?.email, // Add user email
-                    userId: currentUser?.uid // Add Firebase UID
+                    userEmail: currentUser?.email,
+                    userId: currentUser?.uid
                 }
                 : {
-                    roomCode: fd.roomCode,
+                    roomCode: fd.roomCode.trim().toUpperCase(),
                     username: fd.username,
                     password: fd.password,
                     userEmail: currentUser?.email,
                     userId: currentUser?.uid
                 };
             
-            console.log('🚀 Sending authenticated request:', {
+            console.log('🚀 Sending request:', {
                 endpoint: status === 'new' ? '/api/room/create' : '/api/room/join',
                 body: requestBody
             });
             
-            try {
-                const backendUrl = API_BASE_URL;
-                const apiEndpoint = status === 'new' ? '/api/room/create' : '/api/room/join';
-                
-                const response = await fetch(`${backendUrl}${apiEndpoint}`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify(requestBody)
+            const backendUrl = API_BASE_URL;
+            const apiEndpoint = status === 'new' ? '/api/room/create' : '/api/room/join';
+            
+            // ✅ First, check if room exists (for join only)
+            if (status === 'join') {
+                const checkResponse = await fetch(`${backendUrl}/api/room/check/${requestBody.roomCode}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
                 });
-
-                console.log('📡 Response status:', response.status);
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    console.error('❌ Server error:', errorData);
-                    throw new Error(errorData.error || errorData.message || 'Room operation failed');
+                
+                if (!checkResponse.ok) {
+                    throw new Error('Failed to check room status');
                 }
-
-                const data = await response.json();
-                console.log('✅ Firebase response:', data);
-
-                if (!data.success) {
-                    throw new Error(data.error || 'Operation failed');
+                
+                const checkData = await checkResponse.json();
+                console.log('🔍 Room check result:', checkData);
+                
+                if (!checkData.exists) {
+                    throw new Error('Room not found. Please check the room code.');
                 }
+                
+                if (!checkData.active) {
+                    throw new Error('This meeting has ended.');
+                }
+                
+                if (checkData.participantCount >= checkData.maxParticipants) {
+                    throw new Error(`Room is full (${checkData.maxParticipants} participants max)`);
+                }
+            }
+            
+            // ✅ Now create/join the room
+            const response = await fetch(`${backendUrl}${apiEndpoint}`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify(requestBody)
+            });
 
-                const meetingLink = data.meetingLink || `/room/${data.roomCode}`;
+            console.log('📡 Response status:', response.status);
 
-                console.log('🎉 Meeting ready:', {
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('❌ Server error:', errorData);
+                
+                // ✅ Better error messages
+                if (response.status === 404) {
+                    throw new Error('Room not found. Please check the room code.');
+                } else if (response.status === 401) {
+                    throw new Error('Incorrect password.');
+                } else if (response.status === 403) {
+                    throw new Error('Room is full.');
+                } else if (response.status === 410) {
+                    throw new Error('This meeting has ended.');
+                } else {
+                    throw new Error(errorData.error || errorData.message || 'Failed to join room');
+                }
+            }
+
+            const data = await response.json();
+            console.log('✅ Success:', data);
+
+            if (!data.success) {
+                throw new Error(data.error || 'Operation failed');
+            }
+
+            const meetingLink = data.meetingLink || `/room/${data.roomCode}`;
+
+            console.log('🎉 Meeting ready:', {
+                roomCode: data.roomCode,
+                meetingId: data.meetingId,
+                userId: data.userId,
+                participantCount: data.participantCount
+            });
+
+            // ✅ Clear form
+            setFormData({
+                roomName: "",
+                roomCode: "",
+                username: currentUser?.displayName || currentUser?.email?.split('@')[0] || "",
+                password: "",
+                confirmPassword: "",
+                status: status
+            });
+            
+            // ✅ Navigate with complete data
+            navigate("/dashboard", { 
+                state: { 
                     roomCode: data.roomCode,
                     meetingId: data.meetingId,
-                    userId: data.userId
-                });
-
-                // Clear form
-                setFormData({
-                    roomName: "",
-                    roomCode: "",
-                    username: currentUser?.displayName || currentUser?.email?.split('@')[0] || "",
-                    password: "",
-                    confirmPassword: "",
-                    status: status
-                });
-                
-                // Navigate with user data
-                navigate("/dashboard", { 
-                    state: { 
-                        roomCode: data.roomCode,
-                        meetingId: data.meetingId,
-                        roomName: data.roomName,
-                        userId: data.userId,
-                        username: data.username,
-                        hostName: data.hostName,
-                        meetingLink: meetingLink,
-                        settings: data.settings,
-                        status: status,
-                        database: 'firebase',
-                        authenticatedUser: {
-                            uid: currentUser?.uid,
-                            email: currentUser?.email,
-                            displayName: currentUser?.displayName
-                        }
-                    } 
-                });
-            } catch (error) {
-                console.error('❌ Room operation failed:', error);
-                
-                if (error.message.includes('fetch')) {
-                    setErrorMsg('Cannot connect to server. Please ensure:\n1. Server is running\n2. Firebase is configured');
-                } else if (error.message.includes('not found')) {
-                    setErrorMsg('Room not found. Please check the room code.');
-                } else if (error.message.includes('password')) {
-                    setErrorMsg('Incorrect password.');
-                } else if (error.message.includes('full')) {
-                    setErrorMsg('Room is full.');
-                } else {
-                    setErrorMsg(`Error: ${error.message}`);
-                }
-            } finally {
-                setIsLoading(false);
-            }
+                    roomName: data.roomName,
+                    userId: data.userId,
+                    username: data.username,
+                    hostName: data.hostName,
+                    meetingLink: meetingLink,
+                    settings: data.settings,
+                    status: status,
+                    database: 'firebase',
+                    authenticatedUser: {
+                        uid: currentUser?.uid,
+                        email: currentUser?.email,
+                        displayName: currentUser?.displayName
+                    }
+                } 
+            });
+            
         } catch (error) {
-            console.error('❌ Unexpected error:', error);
-            setErrorMsg(`Unexpected error: ${error.message}`);
+            console.error('❌ Error:', error);
+            
+            // ✅ User-friendly error messages
+            if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+                setErrorMsg('Cannot connect to server. Please check your internet connection.');
+            } else {
+                setErrorMsg(error.message);
+            }
+        } finally {
             setIsLoading(false);
         }
     }
@@ -243,7 +266,6 @@ export default function NewRoom({ status, onModalClose }) {
                                 leaveTo="opacity-0 scale-95"
                             >
                                 <Dialog.Panel className="w-full max-w-5xl transform overflow-hidden rounded-3xl text-left align-middle shadow-2xl transition-all bg-white">
-                                    {/* Header with User Info */}
                                     <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white">
                                         <div className="flex justify-between items-center">
                                             <div className="flex items-center gap-4">
@@ -258,7 +280,7 @@ export default function NewRoom({ status, onModalClose }) {
                                                     </h2>
                                                     <p className="text-blue-100 text-sm flex items-center gap-2">
                                                         <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                                                        Logged in as {currentUser?.displayName || currentUser?.email}
+                                                        {currentUser?.displayName || currentUser?.email}
                                                     </p>
                                                 </div>
                                             </div>
@@ -274,7 +296,6 @@ export default function NewRoom({ status, onModalClose }) {
                                     </div>
 
                                     <div className="grid lg:grid-cols-2 gap-0">
-                                        {/* Form Section */}
                                         <div className="p-8">
                                             <form onSubmit={formSubmit} className="space-y-6">
                                                 {status === 'new' && (
@@ -283,112 +304,111 @@ export default function NewRoom({ status, onModalClose }) {
                                                             Meeting Name
                                                             <span className="text-gray-400 font-normal ml-1">(Optional)</span>
                                                         </label>
-                                                        <div className="relative">
-                                                            <input
-                                                                type="text"
-                                                                name="roomName"
-                                                                id="roomname"
-                                                                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 focus:bg-white"
-                                                                placeholder="Team Standup, Project Review..."
-                                                                value={formData.roomName}
-                                                                onChange={handleChange}
-                                                            />
-                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            name="roomName"
+                                                            id="roomname"
+                                                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 focus:bg-white"
+                                                            placeholder="Team Standup, Project Review..."
+                                                            value={formData.roomName}
+                                                            onChange={handleChange}
+                                                        />
                                                     </div>
                                                 )}
                                                 
                                                 {status === 'join' && (
                                                     <div>
                                                         <label htmlFor="roomcode" className="block text-sm font-semibold text-gray-700 mb-3">
-                                                            Meeting Code
+                                                            Meeting Code *
                                                         </label>
                                                         <div className="relative">
+                                                            <input
+                                                                type="text"
+                                                                name="roomCode"
+                                                                id="roomcode"
+                                                                className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 focus:bg-white uppercase"
+                                                                placeholder="ABC123DEF4"
+                                                                value={formData.roomCode}
+                                                                onChange={handleChange}
+                                                                required
+                                                                maxLength={10}
+                                                            />
                                                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                                                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                                                 </svg>
                                                             </div>
-                                                            <input
-                                                                type="text"
-                                                                name="roomCode"
-                                                                id="roomcode"
-                                                                className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 focus:bg-white"
-                                                                placeholder="ABC123DEF4"
-                                                                value={formData.roomCode}
-                                                                onChange={handleChange}
-                                                                required
-                                                            />
                                                         </div>
                                                     </div>
                                                 )}
                                                 
                                                 <div>
                                                     <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-3">
-                                                        Display Name
+                                                        Display Name *
                                                     </label>
                                                     <div className="relative">
-                                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                                            </svg>
-                                                        </div>
                                                         <input
                                                             type="text"
                                                             name="username"
                                                             id="username"
                                                             className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 focus:bg-white"
-                                                            placeholder="Enter display name for meeting"
+                                                            placeholder="Your name"
                                                             value={formData.username}
                                                             onChange={handleChange}
                                                             required
                                                         />
+                                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 
                                                 <div>
                                                     <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-3">
-                                                        Meeting Password
+                                                        Meeting Password *
                                                     </label>
                                                     <div className="relative">
-                                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                                            </svg>
-                                                        </div>
                                                         <input
                                                             type="password"
                                                             name="password"
                                                             id="password"
                                                             className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 focus:bg-white"
-                                                            placeholder="Create a secure password"
+                                                            placeholder={status === 'new' ? 'Create a password' : 'Enter meeting password'}
                                                             value={formData.password}
                                                             onChange={handleChange}
                                                             required
                                                         />
+                                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 
                                                 {status === 'new' && (
                                                     <div>
                                                         <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-3">
-                                                            Confirm Password
+                                                            Confirm Password *
                                                         </label>
                                                         <div className="relative">
-                                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                                </svg>
-                                                            </div>
                                                             <input
                                                                 type="password"
                                                                 name="confirmPassword"
                                                                 id="confirmPassword"
                                                                 className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-0 transition-all duration-200 bg-gray-50 focus:bg-white"
-                                                                placeholder="Confirm your password"
+                                                                placeholder="Confirm password"
                                                                 value={formData.confirmPassword}
                                                                 onChange={handleChange}
                                                                 required
                                                             />
+                                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                                                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                </svg>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 )}
@@ -399,7 +419,7 @@ export default function NewRoom({ status, onModalClose }) {
                                                             <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                             </svg>
-                                                            <span className="whitespace-pre-line">{errorMsg}</span>
+                                                            <span>{errorMsg}</span>
                                                         </div>
                                                     </div>
                                                 )}
@@ -414,7 +434,7 @@ export default function NewRoom({ status, onModalClose }) {
                                                             <svg className="w-6 h-6 mr-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                                             </svg>
-                                                            {status === 'new' ? 'Creating Meeting...' : 'Joining Meeting...'}
+                                                            {status === 'new' ? 'Creating...' : 'Joining...'}
                                                         </>
                                                     ) : status === 'new' ? (
                                                         <>
@@ -435,7 +455,6 @@ export default function NewRoom({ status, onModalClose }) {
                                             </form>
                                         </div>
 
-                                        {/* Video Preview Section */}
                                         <div className="bg-gray-50 p-8 border-l border-gray-200">
                                             <div className="space-y-6">
                                                 <div>
@@ -452,16 +471,15 @@ export default function NewRoom({ status, onModalClose }) {
                                                         ) : (
                                                             <div className="flex flex-col items-center justify-center h-full text-center p-6">
                                                                 <div className="w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl font-bold mb-4 bg-gradient-to-br from-blue-500 to-purple-600">
-                                                                    {formData.username ? formData.username.charAt(0).toUpperCase() : currentUser?.displayName?.charAt(0).toUpperCase() || '?'}
+                                                                    {formData.username ? formData.username.charAt(0).toUpperCase() : '?'}
                                                                 </div>
                                                                 <h4 className="text-gray-300 font-medium text-lg">Camera is off</h4>
-                                                                <p className="text-gray-500 text-sm mt-2">Click the camera icon below to turn it on</p>
+                                                                <p className="text-gray-500 text-sm mt-2">Click camera icon to turn on</p>
                                                             </div>
                                                         )}
                                                     </div>
                                                 </div>
 
-                                                {/* Media Controls */}
                                                 <div className="bg-white rounded-2xl p-6 border border-gray-200">
                                                     <h4 className="text-sm font-semibold text-gray-700 mb-4">Media Settings</h4>
                                                     <div className="flex justify-center gap-6">
@@ -477,7 +495,10 @@ export default function NewRoom({ status, onModalClose }) {
                                                                 {isMicOn ? (
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                                                                 ) : (
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                                                    <>
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                                                        <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/>
+                                                                    </>
                                                                 )}
                                                             </svg>
                                                         </button>
@@ -491,13 +512,9 @@ export default function NewRoom({ status, onModalClose }) {
                                                             }`}
                                                         >
                                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                {isCameraOn ? (
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                                                ) : (
-                                                                    <>
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                                                        <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/>
-                                                                    </>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                                {!isCameraOn && (
+                                                                    <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/>
                                                                 )}
                                                             </svg>
                                                         </button>
